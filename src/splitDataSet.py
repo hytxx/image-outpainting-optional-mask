@@ -5,13 +5,13 @@ Copyright (C) 2018 Topotek Ltd. All rights reserved.
 
 Mail: hyt.lyy@gmail.com
 
-File Name: dataset10000.py
+File Name: splitDataSet.py
 
 Author: hyt
 
 Created Time: 2018年12月26日 星期三 11时45分49秒
 
-Description: reduces dataset from 36500 to 10000
+Description: 把数据集分批次处理
 
 '''
 
