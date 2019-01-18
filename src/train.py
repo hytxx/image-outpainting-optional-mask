@@ -22,14 +22,14 @@ IMAGE_SZ = 128
 OUT_DIR = 'output'
 MODEL_DIR = os.path.join(OUT_DIR, 'models')
 INFO_PATH = os.path.join(OUT_DIR, 'run.txt')
-N_TEST = 10
+N_TEST = 1
 N_ITERS = 227500
 N_ITERS_P1 = 40950 # How many iterations to train in phase 1
 N_ITERS_P2 = 4550 # How many iterations to train in phase 2
 INTV_PRINT = 200 # How often to print
 INTV_SAVE = 1000 # How often to save the model
 ALPHA = 0.0004
-position = 'right'   # optional mask ,can be 'left', 'middle', and 'right'
+maskPosition = 'right'   # optional mask ,can be 'left', 'middle', and 'right'
 
 '''
 # City Training Hyperparameters
@@ -66,24 +66,28 @@ G_Z = tf.placeholder(tf.float32, shape=[None, IMAGE_SZ, IMAGE_SZ, 4], name='G_Z'
 DG_X = tf.placeholder(tf.float32, shape=[None, IMAGE_SZ, IMAGE_SZ, 3], name='DG_X')
 
 # Load Places365 data
-data = np.load('places/places_300.npz')
-imgs = data['imgs_train'] # Originally from http://data.csail.mit.edu/places/places365/val_256.tar
-# (200, 128, 128, 3)
+filenames = os.listdir('./places')
+npzFilePath = [os.path.join(os.path.abspath('./places'), filename) for filename in filenames if os.path.splitext(filename)[1] == '.npz']
 
-imgs_p = util.preprocess_images_outpainting(imgs, position=maskPosition)
-#print(np.shape(imgs_p))
 
-test_imgs = data['imgs_test']
-test_imgs_p = util.preprocess_images_outpainting(test_imgs, position=maskPosition)
-
-test_img = test_imgs[:N_TEST]
-test_img_p = test_imgs_p[:N_TEST]
-
-train_img = imgs
-train_img_p = imgs_p
-#print(np.shape(imgs_p))
-
-#train_img_p = imgs_p[:, :, :, np.newaxis]
+#data = np.load('places/places_300.npz')
+#imgs = data['imgs_train'] # Originally from http://data.csail.mit.edu/places/places365/val_256.tar
+## (200, 128, 128, 3)
+#
+#imgs_p = util.preprocess_images_outpainting(imgs, position=maskPosition)
+##print(np.shape(imgs_p))
+#
+#test_imgs = data['imgs_test']
+#test_imgs_p = util.preprocess_images_outpainting(test_imgs, position=maskPosition)
+#
+#test_img = test_imgs[:N_TEST]
+#test_img_p = test_imgs_p[:N_TEST]
+#
+#train_img = imgs
+#train_img_p = imgs_p
+##print(np.shape(imgs_p))
+#
+##train_img_p = imgs_p[:, :, :, np.newaxis]
 
 '''
 # Load city image data
@@ -101,7 +105,20 @@ train_img_p = imgs_p
 '''
 
 # Write training and testing sample ground truths as reference
-util.save_image(train_img[0], os.path.join(OUT_DIR, 'train_img.png'))
+city_img = util.load_city_image()
+util.save_image(city_img, os.path.join(OUT_DIR, 'train_img.png'))
+test_imgs = []
+for npzFile in npzFilePath:
+    data = np.load(npzFile)
+    test_img = data['imgs_test']
+    test_imgs.append(test_img[0,:,:,:])
+
+'''
+>>> np.shape(test_imgs)
+(146, 128, 128, 3)
+
+'''
+
 for i_test in range(N_TEST):
     util.save_image(test_imgs[i_test], os.path.join(OUT_DIR, 'test_img_%d.png' % i_test))
 
@@ -137,28 +154,37 @@ with tf.Session() as sess:
     else:
         saver.restore(sess, model_filename)
     for i in range(start_iter, N_ITERS + 1):
-        batch, batch_p = util.sample_random_minibatch(imgs, imgs_p, BATCH_SZ)
-        G_sample_ = None
-        C_loss_curr, G_loss_curr, G_MSE_loss_curr = None, None, None
-        if i < N_ITERS_P1: # Stage 1 - Train Generator Only
-            if i == 0:
-                print('------------------> Beginning Phase 1...')
-            _, G_MSE_loss_curr, G_sample_ = sess.run([G_MSE_solver, G_MSE_loss, G_sample], feed_dict={DG_X: batch, G_Z: batch_p})
-        elif i < N_ITERS_P1 + N_ITERS_P2: # Stage 2 - Train Discriminator Only
-            if i == N_ITERS_P1:
-                print('------------------> Beginning Phase 2...')
-            _, C_loss_curr, C_real_, C_fake_ = sess.run([C_solver, C_loss, C_real, C_fake], feed_dict={DG_X: batch, G_Z: batch_p})
-            if VERBOSE:
-                print((i, C_loss_curr, np.min(C_real_), np.max(C_real_), np.min(C_fake_), np.max(C_fake_)))
-        else: # Stage 3 - Train both Generator and Discriminator
-            if i == N_ITERS_P1 + N_ITERS_P2:
-                print('------------------> Beginning Phase 3...')
-            _, C_loss_curr, C_real_, C_fake_ = sess.run([C_solver, C_loss, C_real, C_fake], feed_dict={DG_X: batch, G_Z: batch_p})
-            if VERBOSE:
-                print((i, C_loss_curr, 'D', np.min(C_real_), np.max(C_real_), np.min(C_fake_), np.max(C_fake_)))
-            _, G_loss_curr, G_MSE_loss_curr, G_sample_, C_fake_ = sess.run([G_solver, G_loss, G_MSE_loss, G_sample, C_fake], feed_dict={DG_X: batch, G_Z: batch_p})
-            if VERBOSE:
-                print((i, G_loss_curr, 'G', np.min(C_fake_), np.max(C_fake_)))
+        for npzFile in npzFilePath:
+            data = np.load(npzFile)
+            batch = data['imgs_train']
+            batch_p = util.preprocess_images_outpainting(batch)
+
+            test_img = data['imgs_test'][:N_TEST]
+            test_img_p = util.preprocess_images_outpainting(test_img)[:N_TEST]
+
+
+            #batch, batch_p = util.sample_random_minibatch(train_img, train_img_p, BATCH_SZ)
+            G_sample_ = None
+            C_loss_curr, G_loss_curr, G_MSE_loss_curr = None, None, None
+            if i < N_ITERS_P1: # Stage 1 - Train Generator Only
+                if i == 0:
+                    print('------------------> Beginning Phase 1...')
+                _, G_MSE_loss_curr, G_sample_ = sess.run([G_MSE_solver, G_MSE_loss, G_sample], feed_dict={DG_X: batch, G_Z: batch_p})
+            elif i < N_ITERS_P1 + N_ITERS_P2: # Stage 2 - Train Discriminator Only
+                if i == N_ITERS_P1:
+                    print('------------------> Beginning Phase 2...')
+                _, C_loss_curr, C_real_, C_fake_ = sess.run([C_solver, C_loss, C_real, C_fake], feed_dict={DG_X: batch, G_Z: batch_p})
+                if VERBOSE:
+                    print((i, C_loss_curr, np.min(C_real_), np.max(C_real_), np.min(C_fake_), np.max(C_fake_)))
+            else: # Stage 3 - Train both Generator and Discriminator
+                if i == N_ITERS_P1 + N_ITERS_P2:
+                    print('------------------> Beginning Phase 3...')
+                _, C_loss_curr, C_real_, C_fake_ = sess.run([C_solver, C_loss, C_real, C_fake], feed_dict={DG_X: batch, G_Z: batch_p})
+                if VERBOSE:
+                    print((i, C_loss_curr, 'D', np.min(C_real_), np.max(C_real_), np.min(C_fake_), np.max(C_fake_)))
+                _, G_loss_curr, G_MSE_loss_curr, G_sample_, C_fake_ = sess.run([G_solver, G_loss, G_MSE_loss, G_sample, C_fake], feed_dict={DG_X: batch, G_Z: batch_p})
+                if VERBOSE:
+                    print((i, G_loss_curr, 'G', np.min(C_fake_), np.max(C_fake_)))
 
         # Periodically test the generator on held-out images
         if i % INTV_PRINT == 0:
@@ -170,7 +196,7 @@ with tf.Session() as sess:
                     util.save_image(output[i_test], os.path.join(OUT_DIR, 'dev_%d_%d.png' % (i_test, i)))
                     last_output_PATH[i_test] = os.path.join(OUT_DIR, 'dev_%d_%d.png' % (i_test, i))
                 # Also save the train image
-                output, = sess.run([G_sample], feed_dict={DG_X: train_img, G_Z: train_img_p})
+                output, = sess.run([G_sample], feed_dict={DG_X: city_img, G_Z: city_img})   # train_img --> city_img
                 util.save_image(output[0], os.path.join(OUT_DIR, 'train%d.png' % i))
             print('Iteration [%d/%d]:' % (i, N_ITERS))
             if G_MSE_loss_curr is not None:
