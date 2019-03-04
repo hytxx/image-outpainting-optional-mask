@@ -17,14 +17,15 @@ IMAGE_SZ = 128 # Should be a power of 2
 # Loads the city image.
 # Returns: normalized numpy array of size (1, IMAGE_SZ, IMAGE_SZ, 3)
 def load_city_image():
-    im = Image.open('images/city_128.png').convert('RGB')
+    im = Image.open('../images/city_128.png').convert('RGB')
     width, height = im.size
     left = (width - IMAGE_SZ) / 2
     top = (height - IMAGE_SZ) / 2
     im = im.crop((left, top, left + IMAGE_SZ, top + IMAGE_SZ))
     pix = np.array(im)
-    assert pix.shape == (IMAGE_SZ, IMAGE_SZ, 3)
-    return pix[np.newaxis] / 255.0 # Need to normalize images to [0, 1]
+    return pix
+    #assert pix.shape == (IMAGE_SZ, IMAGE_SZ, 3)
+    #return pix[np.newaxis] / 255.0 # Need to normalize images to [0, 1]
 
 # Loads multiple images from a directory.
 # Returns: normalized numpy array of size (m, IMAGE_SZ, IMAGE_SZ, 3)
@@ -48,7 +49,7 @@ def compile_images(in_PATH, out_PATH):
 # Masks and preprocesses an (m, IMAGE_SZ, IMAGE_SZ, 3) batch of images for image outpainting.
 # Returns: numpy array of size (m, IMAGE_SZ, IMAGE_SZ, 4)
 def preprocess_images_outpainting(imgs, crop=True, position='middle'):
-    m = imgs.shape[0]
+    m = np.shape(imgs)[0]
     imgs = np.array(imgs, copy=True)
     pix_avg = np.mean(imgs, axis=(1, 2, 3))  # pix_avg.shape = (200,)
     if crop:

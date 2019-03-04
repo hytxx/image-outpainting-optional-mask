@@ -22,6 +22,8 @@ import util
 from PIL import Image
 import tensorflow as tf
 import threading
+import util
+
 
 filenames = os.listdir('./raw')
 datalenth = len(filenames)
@@ -33,6 +35,9 @@ imgs_resized_train = './data/imgs_resized_train'
 
 tfrecords_test = "./data/imgs_resized_test.tfrecords"
 tfrecords_train = "./data/imgs_resized_train.tfrecords"
+
+tfrecords_test_imgs_p = "./data/tfrecords_test_imgs_p.tfrecords"
+tfrecords_train_imgs_p = "./data/tfrecords_train_imgs_p.tfrecords"
 
 how2test = 100
 
@@ -87,19 +92,29 @@ def spilt250():
         np.savez(OUT_NPZ, imgs_train=imgs_train, imgs_test=imgs_test, idx_train=idx_train, idx_test=idx_test)
 
 
-#def split2tfrecoder(coord):
-#    idx_test = np.random.choice(datalenth, how2test, replace=False) 
-#    idx_train = list(set(range(datalenth)) - set(idx_test))
-#    print("idx_test = %d" % (len(idx_test)))
-#    print("idx_train = %d" % (len(idx_train)))
-#    print('imgs_path length = %d' % len(imgs_path))
-#    for idx in idx_train:
-#        shutil.copy(imgs_path[idx], imgs_train_dir)
-#    util.resize_images(imgs_train_dir, imgs_resized_train)
-#
-#    for idx in idx_test:
-#        shutil.copy(imgs_path[idx], imgs_test_dir)
-#    util.resize_images(imgs_test_dir, imgs_resized_test)
+def split2tfrecoder():
+    idx_test = np.random.choice(datalenth, how2test, replace=False) 
+    idx_train = list(set(range(datalenth)) - set(idx_test))
+    print("idx_test = %d" % (len(idx_test)))
+    print("idx_train = %d" % (len(idx_train)))
+    print('imgs_path length = %d' % len(imgs_path))
+    for idx in idx_train:
+        shutil.copy(imgs_path[idx], imgs_train_dir)
+    util.resize_images(imgs_train_dir, imgs_resized_train)
+
+    for idx in idx_test:
+        shutil.copy(imgs_path[idx], imgs_test_dir)
+    util.resize_images(imgs_test_dir, imgs_resized_test)
+
+
+def writePreprocess_images_outpainting(imgs_PATH, write_path, crop=True, position='middle'):
+    imgs = util.load_images(imgs_PATH)    # imgs_PATH can be imgs_resized_train  or imgs_resized_test
+    imgs_p = util.preprocess_images_outpainting(imgs, crop, position)
+    writer = tf.python_io.TFRecordWriter(write_path)    # write_path can be tfrecords_train_imgs_p  or tfrecords_test_imgs_p
+    for img_p in imgs_p:
+
+    
+
 
 
 def writetfrecords(write_path, image_path):
@@ -125,25 +140,12 @@ def writetfrecords(write_path, image_path):
     writer.close()
 
 
-#    writer = tf.python_io.TFRecordWriter(tfrecords_test)
-#
-#    for img_name in os.listdir(imgs_resized_test):
-#        img_abspath = os.path.join(os.path.abspath(imgs_resized_test), img_name)
-#        img = Image.open(img_abspath)
-#        img_raw = img.tobytes()     # 将图片转换为二进制
-#        example = tf.train.Example(features=tf.train.Features(
-#            feature={"img_raw": tf.train.Feature(bytes_list=tf.train.BytesList(value=[img_raw]))}
-#            ))
-#        writer.write(example.SerializeToString())
-#
-#    writer.close()
-
-
 if __name__ == '__main__':
     #coord = tf.train.Coordinator()
     #threads = [threading.Thread(target=split2tfrecoder, args=(coord,)) for i in range(8)]
     #for t in threads: t.start()
     #coord.join(threads)
+
+    split2tfrecoder()
     writetfrecords(tfrecords_train, imgs_resized_train)
-    
-    #split2tfrecoder()
+    writetfrecords(tfrecords_test, imgs_resized_test)
