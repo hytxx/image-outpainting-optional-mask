@@ -26,12 +26,15 @@ import util
 
 
 filenames = os.listdir('./raw')
-datalenth = len(filenames)
+datalenth = len(filenames)      # 36500 samples
 imgs_path = [os.path.join(os.path.abspath('./raw'), filename) for filename in filenames]
 imgs_train_dir = './data/imgs_train'
 imgs_test_dir = './data/imgs_test'
 imgs_resized_test = './data/imgs_resized_test'
 imgs_resized_train = './data/imgs_resized_train'
+
+out_train_batch = './data/train_batch_1040'
+out_train_batch_tfrecords = './data/train_batch_tfrecords/'
 
 tfrecords_test = "./data/imgs_resized_test.tfrecords"
 tfrecords_train = "./data/imgs_resized_train.tfrecords"
@@ -49,9 +52,15 @@ if not os.path.exists(imgs_resized_train):
     os.makedirs(os.path.abspath(imgs_resized_train))
 if not os.path.exists(imgs_resized_test):
     os.makedirs(os.path.abspath(imgs_resized_test))
+if not os.path.exists(out_train_batch):
+    os.makedirs(os.path.abspath(out_train_batch))
+if not os.path.exists(out_train_batch_tfrecords):
+    os.makedirs(os.path.abspath(out_train_batch_tfrecords))
 
-
-def spilt250():    
+def spilt250():
+    '''
+    把数据集分成250个样本为一个单位，否则太大了。
+    '''
     length = 250
 
     count = int(np.shape(filenames)[0] / length)
@@ -92,29 +101,65 @@ def spilt250():
         np.savez(OUT_NPZ, imgs_train=imgs_train, imgs_test=imgs_test, idx_train=idx_train, idx_test=idx_test)
 
 
-def split2tfrecoder():
-    idx_test = np.random.choice(datalenth, how2test, replace=False) 
-    idx_train = list(set(range(datalenth)) - set(idx_test))
-    print("idx_test = %d" % (len(idx_test)))
-    print("idx_train = %d" % (len(idx_train)))
-    print('imgs_path length = %d' % len(imgs_path))
-    for idx in idx_train:
-        shutil.copy(imgs_path[idx], imgs_train_dir)
-    util.resize_images(imgs_train_dir, imgs_resized_train)
+def splitbatch(batch_size=1040):
+    '''
+    把数据分成训练集和测试集，并resize, 然后把训练集分成1040个样本为一个单元。
+    '''
+#    idx_test = np.random.choice(datalenth, how2test, replace=False) 
+#    idx_train = list(set(range(datalenth)) - set(idx_test))
+#    print("idx_test = %d" % (len(idx_test)))
+#    print("idx_train = %d" % (len(idx_train)))
+#    print('imgs_path length = %d' % len(imgs_path))
+#    for idx in idx_train:
+#        shutil.copy(imgs_path[idx], imgs_train_dir)
+#    util.resize_images(imgs_train_dir, imgs_resized_train)
+#
+#    for idx in idx_test:
+#        shutil.copy(imgs_path[idx], imgs_test_dir)
+#    util.resize_images(imgs_test_dir, imgs_resized_test)
 
-    for idx in idx_test:
-        shutil.copy(imgs_path[idx], imgs_test_dir)
-    util.resize_images(imgs_test_dir, imgs_resized_test)
+    file_names = os.listdir(imgs_resized_train)
+    file_length = len(file_names)
+
+    counts = int(file_length / batch_size)      # 36400 / 1040 = 35
+
+    idxs = [[(i-1)*batch_size, i*batch_size] for i in range(1,counts+1)]
+
+    filename = [np.asarray(file_names)[range(i[0], i[1])] for i in idxs]
+
+    out_directory = [str(i[0])+'_'+str(i[1]) for i in idxs]
+
+    for idx, files in enumerate(filename):
+        os.makedirs(os.path.join(os.path.abspath(out_train_batch), out_directory[idx]))   # creat new directory in ./data/train_batch_1040 directory.
+        new_directory = os.path.join(os.path.abspath(out_train_batch), out_directory[idx])
+        print("---"*20)
+        print(new_directory)
+        print("---"*20) 
+        for file_i in np.asarray(files):
+            full_outfilename = os.path.join(os.path.abspath(imgs_resized_train), file_i)
+            print(full_outfilename)
+            shutil.copy(full_outfilename, new_directory)
+
+        writepath = out_train_batch_tfrecords + str(out_directory[idx]) + '.tfrecords'
+        writePreprocess_images_outpainting(new_directory, writepath, crop=True, position='middle')
 
 
 def writePreprocess_images_outpainting(imgs_PATH, write_path, crop=True, position='middle'):
+    '''
+    generate train_imgs_p tfrecords and test_imgs_p tfrecords file.
+
+    '''
     imgs = util.load_images(imgs_PATH)    # imgs_PATH can be imgs_resized_train  or imgs_resized_test
     imgs_p = util.preprocess_images_outpainting(imgs, crop, position)
-    writer = tf.python_io.TFRecordWriter(write_path)    # write_path can be tfrecords_train_imgs_p  or tfrecords_test_imgs_p
-    for img_p in imgs_p:
-
-    
-
+    with tf.python_io.TFRecordWriter(write_path) as write:    # write_path can be tfrecords_train_imgs_p  or tfrecords_test_imgs_p
+        for img_p in imgs_p:
+            features = tf.train.Features(
+                    feature = {
+                        "img_p": tf.train.Feature(bytes_list = tf.train.BytesList(value=[img_p.tostring()]))
+                            })
+            example = tf.train.Example(features=features)
+            serialized = example.SerializeToString()
+            write.write(serialized)
 
 
 def writetfrecords(write_path, image_path):
@@ -146,6 +191,9 @@ if __name__ == '__main__':
     #for t in threads: t.start()
     #coord.join(threads)
 
-    split2tfrecoder()
-    writetfrecords(tfrecords_train, imgs_resized_train)
-    writetfrecords(tfrecords_test, imgs_resized_test)
+    splitbatch()
+#    writetfrecords(tfrecords_train, imgs_resized_train)
+#    writetfrecords(tfrecords_test, imgs_resized_test)
+
+    #writePreprocess_images_outpainting(imgs_resized_test, tfrecords_test_imgs_p)
+    #writePreprocess_images_outpainting(imgs_resized_train, tfrecords_train_imgs_p)
